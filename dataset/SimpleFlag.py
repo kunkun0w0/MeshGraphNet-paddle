@@ -59,10 +59,10 @@ def add_noise(frame, fields, scale, gamma):
     return frame
 
 
-class iterator_dataset(Dataset):
+class simple_flag(Dataset):
     def __init__(self, dataset_dir, noise_scale, noise_gamma,
                  split='train', fields=None, add_history=True):
-        super(iterator_dataset, self).__init__()
+        super(simple_flag, self).__init__()
         #  Simple Flag attributes
         self.data_keys = ("cells", "mesh_pos", "node_type", "world_pos")
         self.out_keys = list(self.data_keys) + ['time']
@@ -103,43 +103,18 @@ class iterator_dataset(Dataset):
         data = add_targets(trajectory=data, fields=self.fields, add_history=self.add_history)
         if self.split == 'train':
             data = add_noise(frame=data, fields=self.fields, scale=self.noise_scale, gamma=self.noise_gamma)
+        if 'velocity' not in data.keys():
+            data['velocity'] = data['world_pos'] - data['prev|world_pos']
 
-        if 'velocity' in data.keys():
-            velocity = data['velocity']
-        else:
-            velocity = data['world_pos'] - data['prev|world_pos']
+        # frame = 399
+        # node = 1579
+        # edge = 9084
 
-        velocity = paddle.to_tensor(np.array(velocity))
-        node_type = paddle.to_tensor(np.squeeze(np.array(data['node_type'][:, 0])))
-        node_type = paddle.nn.functional.one_hot(node_type, num_classes=common.NodeType.SIZE)
-        node_type = paddle.expand(paddle.unsqueeze(node_type, axis=1),
-                                  shape=[node_type.shape[0], velocity.shape[1], node_type.shape[1]])
+        out = dict()
+        for k in data.keys():
+            out[k] = paddle.to_tensor(np.array(data[k]))
 
-        node_features = paddle.concat([velocity, node_type], axis=-1)  # [399, 1579, 3] + [399, 1579, 9]
-
-        # construct graph edges
-        senders, receivers = common.triangles_to_edges(paddle.to_tensor(np.array(data['cells'])))
-        # senders -> [399, 18168]
-        # receivers -> [399, 18168]
-
-        world_pos = paddle.to_tensor(np.array(data['world_pos']))
-        mesh_pos = paddle.to_tensor(np.array(data['mesh_pos']))
-
-        w_shape = [senders.shape[0], senders.shape[1], 3]
-        m_shape = [senders.shape[0], senders.shape[1], 2]
-
-        relative_world_pos = paddle_gather(x=world_pos, index=senders.unsqueeze(axis=-1).expand(w_shape), dim=1) - \
-                             paddle_gather(x=world_pos, index=receivers.unsqueeze(axis=-1).expand(w_shape), dim=1)
-        relative_mesh_pos = paddle_gather(x=mesh_pos, index=senders.unsqueeze(axis=-1).expand(m_shape), dim=1) - \
-                            paddle_gather(x=mesh_pos, index=receivers.unsqueeze(axis=-1).expand(m_shape), dim=1)
-
-        edge_features = paddle.concat([
-            relative_world_pos,
-            paddle.norm(relative_world_pos, axis=-1, keepdim=True, p=2),
-            relative_mesh_pos,
-            paddle.norm(relative_mesh_pos, axis=-1, keepdim=True, p=2)], axis=-1)
-
-        return node_features, edge_features, senders, receivers, data
+        return out
 
     def __len__(self):
         if self.split == 'train':
