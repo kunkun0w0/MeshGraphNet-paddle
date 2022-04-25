@@ -26,18 +26,17 @@ def paddle_gather(x, dim, index):
 
 def h5py_to_tensor(data):
     velocity = data['velocity']
-    velocity = paddle.to_tensor(np.array(velocity))
-    node_type = paddle.to_tensor(np.squeeze(np.array(data['node_type'][:, 0])))
+    node_type = data['node_type'][:, 0].squeeze()
     node_type = paddle.nn.functional.one_hot(node_type, num_classes=common.NodeType.SIZE)
     node_type = paddle.expand(paddle.unsqueeze(node_type, axis=1),
                               shape=[node_type.shape[0], velocity.shape[1], node_type.shape[1]])
 
     node_features = paddle.concat([velocity, node_type], axis=-1)
 
-    senders, receivers = common.triangles_to_edges(paddle.to_tensor(np.array(data['cells'])))
+    senders, receivers = common.triangles_to_edges(data['cells'])
 
-    world_pos = paddle.to_tensor(np.array(data['world_pos']))
-    mesh_pos = paddle.to_tensor(np.array(data['mesh_pos']))
+    world_pos = data['world_pos']
+    mesh_pos = data['mesh_pos']
 
     w_shape = [senders.shape[0], senders.shape[1], 3]
     m_shape = [senders.shape[0], senders.shape[1], 2]
