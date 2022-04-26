@@ -120,6 +120,7 @@ class Decoder(nn.Layer):
 
 
 class EncodeProcessDecode(nn.Layer):
+    # node_input_size=12 edge_input_size=7, output_size=2 num_edge_types
     def __init__(self, node_input_size, edge_input_size, output_size, num_iterations, num_edge_types, hidden_size=128):
 
         super(EncodeProcessDecode, self).__init__()
