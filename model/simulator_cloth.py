@@ -1,14 +1,14 @@
-from .model import EncodeProcessDecode
-import model
-from ..utils.normalization import Normalizer
+from model.model import EncodeProcessDecode
+from model.model import MultiGraph
+from utils.normalization import Normalizer
 import paddle.nn as nn
-from ..common import NodeType
+from common import NodeType
 import paddle
 
 
 class SimulatorCloth(nn.Layer):
     def __init__(self, node_input_size, edge_input_size, output_size, num_iterations, num_edge_types, hidden_size=128):
-        super(SimulatorCloth).__init__()
+        super(SimulatorCloth, self).__init__()
         self.model = EncodeProcessDecode(node_input_size=node_input_size,
                                          edge_input_size=edge_input_size,
                                          output_size=output_size,
@@ -26,7 +26,7 @@ class SimulatorCloth(nn.Layer):
         # normalize node and edge features
         new_node_features = self.node_normalizer(graph.node_features)
         new_edge_sets = [graph.edge_sets[0]._replace(features=self.edge_normalizer(graph.edge_sets[0].features))]
-        graph = model.MultiGraph(new_node_features, new_edge_sets)
+        graph = MultiGraph(new_node_features, new_edge_sets)
 
         # pass through the encoder-processor-decoder architecture
         output = self.model(graph)
