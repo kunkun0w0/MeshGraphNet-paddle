@@ -26,10 +26,10 @@ def add_noise(frame, fields, scale, gamma):
         return frame
 
     for field in fields:
-        noise = paddle.tensor.random.gaussian(frame[field].shape, std=scale, dtype=paddle.float32)
+        noise = paddle.tensor.random.gaussian(frame[field].shape, std=scale)
 
         # don't apply noise to boundary nodes
-        mask = paddle.equal(frame['node_type'], common.NodeType.NORMAL)
+        mask = paddle.equal(frame['node_type'], paddle.to_tensor(int(common.NodeType.NORMAL), dtype=paddle.int32))
         noise = paddle.where(mask, noise, paddle.zeros_like(noise))
 
         frame[field] += noise
@@ -80,18 +80,20 @@ class simple_flag(Dataset):
 
         data = self.file_handle[str(idx)]
         data = add_targets(trajectory=data, fields=self.fields, add_history=self.add_history)
-        if self.split == 'train':
-            data = add_noise(frame=data, fields=self.fields, scale=self.noise_scale, gamma=self.noise_gamma)
-        if 'velocity' not in data.keys():
-            data['velocity'] = data['world_pos'] - data['prev|world_pos']
-
-        # frame = 399
-        # node = 1579
-        # edge = 9084
 
         out = dict()
         for k in data.keys():
             out[k] = paddle.to_tensor(np.array(data[k]))
+
+        if self.split == 'train':
+            out = add_noise(frame=out, fields=self.fields, scale=self.noise_scale, gamma=self.noise_gamma)
+
+        if 'velocity' not in data.keys():
+            out['velocity'] = out['world_pos'] - out['prev|world_pos']
+
+        # frame = 399
+        # node = 1579
+        # edge = 9084
 
         return out
 
