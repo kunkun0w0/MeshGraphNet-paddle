@@ -9,27 +9,6 @@ import h5py
 import common
 
 
-def paddle_gather(x, dim, index):
-    index_shape = index.shape
-    index_flatten = index.flatten()
-    if dim < 0:
-        dim = len(x.shape) + dim
-    nd_index = []
-    for k in range(len(x.shape)):
-        if k == dim:
-            nd_index.append(index_flatten)
-        else:
-            reshape_shape = [1] * len(x.shape)
-            reshape_shape[k] = x.shape[k]
-            x_arrange = paddle.arange(x.shape[k], dtype=index.dtype)
-            x_arrange = x_arrange.reshape(reshape_shape)
-            dim_index = paddle.expand(x_arrange, index_shape).flatten()
-            nd_index.append(dim_index)
-    ind2 = paddle.transpose(paddle.stack(nd_index), [1, 0]).astype("int64")
-    paddle_out = paddle.gather_nd(x, ind2).reshape(index_shape)
-    return paddle_out
-
-
 def add_targets(trajectory, fields, add_history):
     out = {}
     for key in trajectory.keys():
