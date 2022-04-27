@@ -8,11 +8,11 @@ class Normalizer(nn.Layer):
         super(Normalizer, self).__init__()
         self.name = name
         self._max_accumulations = max_accumulations
-        self._std_epsilon = paddle.to_tensor(std_epsilon, dtype='float32', lace=paddle.CUDAPlace)
-        self._acc_count = paddle.to_tensor(0, dtype='float32', place=paddle.CUDAPlace)
-        self._num_accumulations = paddle.to_tensor(0, dtype='float32', place=paddle.CUDAPlace)
-        self._acc_sum = paddle.to_tensor(np.zeros((1, size)), dtype='float32', place=paddle.CUDAPlace)
-        self._acc_sum_squared = paddle.to_tensor(np.zeros((1, size)), dtype='float32', place=paddle.CUDAPlace)
+        self._std_epsilon = paddle.to_tensor(std_epsilon, dtype='float32')
+        self._acc_count = paddle.to_tensor(0, dtype='float32')
+        self._num_accumulations = paddle.to_tensor(0, dtype='float32')
+        self._acc_sum = paddle.to_tensor(np.zeros((1, size)), dtype='float32')
+        self._acc_sum_squared = paddle.to_tensor(np.zeros((1, size)), dtype='float32')
 
     def forward(self, batched_data, accumulate=True):
         """Normalizes input data and accumulates statistics."""
@@ -39,12 +39,12 @@ class Normalizer(nn.Layer):
 
     def _mean(self):
         safe_count = paddle.maximum(self._acc_count,
-                                    paddle.to_tensor(1.0, dtype='float32', place=paddle.CUDAPlace))
+                                    paddle.to_tensor(1.0, dtype='float32'))
         return self._acc_sum / safe_count
 
     def _std_with_epsilon(self):
         safe_count = paddle.maximum(self._acc_count,
-                                    paddle.to_tensor(1.0, dtype='float32', place=paddle.CUDAPlace))
+                                    paddle.to_tensor(1.0, dtype='float32'))
         std = paddle.sqrt(self._acc_sum_squared / safe_count - self._mean() ** 2)
         return paddle.maximum(std, self._std_epsilon)
 
