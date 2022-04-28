@@ -35,7 +35,7 @@ class SimulatorCfd(nn.Layer):
         cur_velocity = frame['velocity']
         target_velocity = frame['target|velocity']
         target_velocity_change = target_velocity - cur_velocity
-        target_normalized = self.output_normalizer(target_velocity_change, training=True)
+        target_normalized = self.output_normalizer(target_velocity_change)
 
         # for predict
         velocity_update = self.output_normalizer.inverse(output)
