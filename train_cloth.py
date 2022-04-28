@@ -51,8 +51,7 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
         num_edge_types=1
     )
 
-    # todo: add paddle.optimizer.lr.ExponentialDecay 
-
+    # todo: add paddle.optimizer.lr.ExponentialDecay
     optimizer = Adam(learning_rate=3e-4, parameters=model.parameters())
 
     if checkpoint:
@@ -71,7 +70,7 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
 
     train_summary_writer = LogWriter(train_log_dir)
     val_summary_writer = LogWriter(val_log_dir)
-
+    frames = 40  # 一次取40帧
     # train
     for e in range(epoch):
         model.train()
@@ -81,61 +80,62 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
             # batch * frames * ...
             for _ in range(bs):
                 # 取batch内数据
-                loss_value = []
-                tq = tqdm(range(node_features[_].shape[0]))
-
-                for i in tq:
-                    # 取单数据帧
-                    node_features_, edge_features_, senders_, receivers_ = \
-                        node_features[_][i], edge_features[_][i], senders[_][i], receivers[_][i]
-                    frame_ = {key: value[_][i] for key, value in frame.items()}
-
+                for i in range(0, 399, frames):
+                    loss_value = []
+                    # 取第一部分
+                    if i + frames < 399:
+                        node_features_, edge_features_, senders_, receivers_ = \
+                            node_features[_][i:i + frames], edge_features[_][i:i + frames], senders[_][i:i + frames], \
+                            receivers[_][i:i + frames]
+                        frame_ = {key: value[_][i:i + frames] for key, value in frame.items()}
+                    else:
+                        node_features_, edge_features_, senders_, receivers_ = \
+                            node_features[_][i:399], edge_features[_][i:399], senders[_][i:399], receivers[_][i:399]
+                        frame_ = {key: value[_][i:399] for key, value in frame.items()}
                     graph = MultiGraph(node_features_, edge_sets=[EdgeSet(edge_features_, senders_, receivers_)])
+
                     output, target_normalized, acceleration = model(graph, frame_)
-
                     loss = simulator_cloth.cloth_loss(output, target_normalized, frame_)
-                    tq.set_postfix(real_time_loss='%.2f' % loss.numpy().item())
-                    loss_value.append(loss.numpy().item())
 
-                    optimizer.clear_grad()
                     loss.backward()
                     optimizer.step()
-
-                print(f"step:{idx*bs+_} => loss:{np.mean(np.array(loss_value)).item()}")
+                    optimizer.clear_grad()
+                    print(loss.numpy().item())
+                    loss_value.append(loss.numpy().item())
+                print(f"step:{idx * bs + _} => loss:{np.mean(np.array(loss_value)).item()}")
                 train_summary_writer.add_scalar("train loss", np.mean(np.array(loss_value)).item(),
                                                 e * (_ + 1) * train_len + idx)
-
         if (e + 1) % save_epoch == 0:
             opt_state = optimizer.state_dict()
             model_state = model.state_dict()
             state_dict = {"opt_state": opt_state, "model_state": model_state}
             paddle.save(state_dict, path=os.path.join(save_path, str(e + 1) + '.pdparams'))
 
-        # perform validation
-        if (e + 1) % val_epoch == 0:
-            model.eval()
-            predicteds = []
-            targets = []
-            for epoch, item in enumerate(valid_dataset):
-                node_features, edge_features, senders, receivers, frame = mesh_loader.h5py_to_tensor(item)
-                for _ in range(bs):
-                    tq = tqdm(range(node_features[_].shape[0]))
-                    for i in tq:
-                        node_features_, edge_features_, senders_, receivers_ = \
-                            node_features[_][i], edge_features[_][i], senders[_][i], receivers[_][i]
-                        frame_ = {key: value[_][i] for key, value in frame.items()}
-                        graph = MultiGraph(node_features_, edge_sets=[EdgeSet(edge_features_, senders_, receivers_)])
-                        output, target_normalized, acceleration = model(graph, frame_)
-                        loss = cloth_loss(output, target_normalized, frame_)
-                        tq.set_postfix('current loss: ', loss.numpy())
-                        predict = cloth_predict(acceleration, frame_)
-                        target = frame_['target|world_pos']
-                        predicteds.append(paddle.to_tensor(predict.detach(), place=paddle.CPUPlace()).numpy().item())
-                        targets.append(paddle.to_tensor(target.detach(), place=paddle.CPUPlace()).numpy().item())
-
-            mse = mean_squared_error(np.array(predicteds), np.array(targets))
-            val_summary_writer.add_scalar("val mse", mse, step=e+1)
-            print(f"epoch:{e+1} => val mse:{mse}")
+        # # perform validation
+        # if (e + 1) % val_epoch == 0:
+        #     model.eval()
+        #     predicteds = []
+        #     targets = []
+        #     for epoch, item in enumerate(valid_dataset):
+        #         node_features, edge_features, senders, receivers, frame = mesh_loader.h5py_to_tensor(item)
+        #         for _ in range(bs):
+        #             tq = tqdm(range(node_features[_].shape[0]))
+        #             for i in tq:
+        #                 node_features_, edge_features_, senders_, receivers_ = \
+        #                     node_features[_][i], edge_features[_][i], senders[_][i], receivers[_][i]
+        #                 frame_ = {key: value[_][i] for key, value in frame.items()}
+        #                 graph = MultiGraph(node_features_, edge_sets=[EdgeSet(edge_features_, senders_, receivers_)])
+        #                 output, target_normalized, acceleration = model(graph, frame_)
+        #                 loss = cloth_loss(output, target_normalized, frame_)
+        #                 tq.set_postfix('current loss: ', loss.numpy())
+        #                 predict = cloth_predict(acceleration, frame_)
+        #                 target = frame_['target|world_pos']
+        #                 predicteds.append(paddle.to_tensor(predict.detach(), place=paddle.CPUPlace()).numpy().item())
+        #                 targets.append(paddle.to_tensor(target.detach(), place=paddle.CPUPlace()).numpy().item())
+        #
+        #     mse = mean_squared_error(np.array(predicteds), np.array(targets))
+        #     val_summary_writer.add_scalar("val mse", mse, step=e + 1)
+        #     print(f"epoch:{e + 1} => val mse:{mse}")
 
 
 def main():
@@ -153,11 +153,12 @@ def main():
     train(data_path=args.data_path, epoch=args.epoch, save_epoch=args.save_epoch, val_epoch=args.val_epoch,
           save_path=args.save_path, checkpoint=args.checkpoint, bs=args.batch_size)
 
-    # train(data_path='D:\Documents\Postgraduate\Code\MeshGraphNets\Data\\flag_simple_h5',
-    #       epoch=1000, save_epoch=100, val_epoch=10, save_path='./model_save/flag_simple', checkpoint=None, bs=1)
+#     train(data_path='data/data142705/',
+#           epoch=1000, save_epoch=2, val_epoch=2, save_path='./model_save/flag_simple', checkpoint=None, bs=1)
+
 
 if __name__ == '__main__':
     paddle.seed(123456)
-    paddle.device.set_device("gpu:1")
+    paddle.device.set_device("gpu:0")
     main()
 
