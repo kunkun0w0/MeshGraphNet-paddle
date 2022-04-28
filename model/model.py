@@ -86,7 +86,7 @@ class GraphNetBlock(nn.Layer):
             features.append(paddle.incubate.segment_sum(edge_set.features, paddle.sort(edge_set.receivers)))
         return self.node_update(paddle.concat(features, axis=-1))
 
-    def forward(self, graph, training=False):
+    def forward(self, graph):
         """
         Perform the message-passing on the graph
         :param graph: MultiGraph; the input graph
