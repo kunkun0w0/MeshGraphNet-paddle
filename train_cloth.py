@@ -131,7 +131,7 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
                         loss = cloth_loss(output, target_normalized, frame_)
                         tq.set_postfix('current loss: ', loss.numpy())
                         predict = cloth_predict(acceleration, frame_)
-                        target = frame_['world_pos']
+                        target = frame_['target|world_pos']
                         predicteds.append(paddle.to_tensor(predict.detach(), place=paddle.CPUPlace()).numpy().item())
                         targets.append(paddle.to_tensor(target.detach(), place=paddle.CPUPlace()).numpy().item())
 
