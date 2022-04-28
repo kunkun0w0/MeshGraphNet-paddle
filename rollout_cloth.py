@@ -48,7 +48,7 @@ def rollout(checkpoint_path, dataset_path, batch_size=1):
                 loss = cloth_loss(output, target_normalized, frame_)
                 tq.set_postfix('current loss: ', loss.numpy().item())
                 predict = cloth_predict(acceleration, frame_)
-                target = frame_['world_pos']
+                target = frame_['target|world_pos']
                 predicteds.append(paddle.to_tensor(predict.detach(), place=paddle.CPUPlace()).numpy().item())
                 targets.append(paddle.to_tensor(target.detach(), place=paddle.CPUPlace()).numpy().item())
             mse = mean_squared_error(np.array(predicteds), np.array(targets))
