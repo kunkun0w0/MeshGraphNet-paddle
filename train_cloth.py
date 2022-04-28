@@ -51,10 +51,9 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
         num_edge_types=1
     )
 
-    # todo: add paddle.optimizer.lr.ExponentialDecay (暂时使用ReduceOnPlateau)
-    scheduler = paddle.optimizer.lr.ReduceOnPlateau(3e-4, mode='min', factor=0.1, patience=10, threshold=1e-4,
-                                                    threshold_mode='rel', cooldown=0, min_lr=0, epsilon=1e-8, verbose=False)
-    optimizer = Adam(learning_rate=scheduler, parameters=model.parameters())
+    # todo: add paddle.optimizer.lr.ExponentialDecay 
+
+    optimizer = Adam(learning_rate=3e-4, parameters=model.parameters())
 
     if checkpoint:
         state_dict = paddle.load(checkpoint)
@@ -102,7 +101,6 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
                     loss.backward()
                     optimizer.step()
 
-                scheduler.step(np.mean(np.array(loss_value)).item())
                 print(f"step:{idx*bs+_} => loss:{np.mean(np.array(loss_value)).item()}")
                 train_summary_writer.add_scalar("train loss", np.mean(np.array(loss_value)).item(),
                                                 e * (_ + 1) * train_len + idx)
