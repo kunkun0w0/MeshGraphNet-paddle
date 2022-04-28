@@ -45,8 +45,8 @@ class SimulatorCloth(nn.Layer):
 
 
 def cloth_loss(output, target_normalized, frame):
-    loss_mask = paddle.cast(paddle.equal(frame['node_type'][:, 0], NodeType.NORMAL), dtype='float32')
-    error = paddle.sum(paddle.square(target_normalized - output), axis=1)
+    loss_mask = paddle.cast(paddle.equal(frame['node_type'][:, :, 0], NodeType.NORMAL), dtype='float32')
+    error = paddle.sum(paddle.square(target_normalized - output), axis=2)
     loss = paddle.mean(error * loss_mask)
     return loss
 
