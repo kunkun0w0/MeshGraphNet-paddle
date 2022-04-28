@@ -8,25 +8,6 @@ import collections
 EdgeSet = collections.namedtuple('EdgeSet', ['features', 'senders', 'receivers'])
 MultiGraph = collections.namedtuple('Graph', ['node_features', 'edge_sets'])
 
-def paddle_gather(x, dim, index):
-    index_shape = index.shape
-    index_flatten = index.flatten()
-    if dim < 0:
-        dim = len(x.shape) + dim
-    nd_index = []
-    for k in range(len(x.shape)):
-        if k == dim:
-            nd_index.append(index_flatten)
-        else:
-            reshape_shape = [1] * len(x.shape)
-            reshape_shape[k] = x.shape[k]
-            x_arrange = paddle.arange(x.shape[k], dtype=index.dtype)
-            x_arrange = x_arrange.reshape(reshape_shape)
-            dim_index = paddle.expand(x_arrange, index_shape).flatten()
-            nd_index.append(dim_index)
-    ind2 = paddle.transpose(paddle.stack(nd_index), [1, 0]).astype("int64")
-    paddle_out = paddle.gather_nd(x, ind2).reshape(index_shape)
-    return paddle_out
 
 # 注：这里仿照pytorch代码，不自定义感知机层数，全用4层
 def build_mlp(in_size, hidden_size, out_size, lay_norm=True):
@@ -82,20 +63,13 @@ class GraphNetBlock(nn.Layer):
         :return: Tensor with shape (m, d2), where m is the number of edges and
                  d2 is the number of output dims
         """
-        for i in range(node_features.shape[0]):
-            if i == 0:
-                sender_features = paddle.unsqueeze(paddle.gather(node_features[i], edge_set.receivers[i]),axis=0)
-            else:
-                sender_features = paddle.concat((sender_features,paddle.unsqueeze(paddle.gather(node_features[i], edge_set.receivers[i]),axis=0)),axis=0)
-        # sender_features = paddle_gather(node_features,0, edge_set.senders)
 
-        for i in range(node_features.shape[0]):
-            if i == 0:
-                receiver_features = paddle.unsqueeze(paddle.gather(node_features[i], edge_set.receivers[i]),axis=0)
-            else:
-                receiver_features = paddle.concat((receiver_features,paddle.unsqueeze(paddle.gather(node_features[i], edge_set.receivers[i]),axis=0)),axis=0)
+        t, nodes, c = node_features.shape
+        t, edges = edge_set.receivers.shape
 
-        # receiver_features = paddle_gather(node_features,0, edge_set.receivers)
+        sender_features = paddle.stack([paddle.gather(x=node_features[i], index=edge_set.receivers[i], axis=0) for i in range(t)], axis=0)
+        receiver_features = paddle.stack([paddle.gather(x=node_features[i], index=edge_set.receivers[i], axis=0) for i in range(t)], axis=0)
+
         features = [sender_features, receiver_features, edge_set.features]
         return self.edge_updates[index](paddle.concat(features, axis=-1))
 
@@ -109,17 +83,11 @@ class GraphNetBlock(nn.Layer):
         :return: Tensor with shape (n, d2), where n is the number of nodes and d2
                  is the number of output dims
         """
-        # num_nodes = tf.shape(node_features)[0]
         features = [node_features]
-        for edge_set in edge_sets:
-            # perform sum aggregation
-            # 这里还有点问题, 应该用到num_nodes对segment_sum的结果维度做一个限制，paddle中没提供这个api
-            for i in range(edge_set.features.shape[0]):
-                if i==0:
-                    feature=paddle.unsqueeze(paddle.incubate.segment_sum(edge_set.features[i], paddle.sort(edge_set.receivers[i])),axis=0)
-                else:
-                    feature = paddle.concat((feature,paddle.unsqueeze(paddle.incubate.segment_sum(edge_set.features[i], paddle.sort(edge_set.receivers[i])),axis=0)),axis=0)
+        t, nodes, c = node_features.shape
 
+        for edge_set in edge_sets:
+            feature = paddle.stack([paddle.incubate.segment_sum(edge_set.features[i], paddle.sort(edge_set.receivers[i])) for i in range(t)], axis=0)
             features.append(feature)
         return self.node_update(paddle.concat(features, axis=-1))
 
