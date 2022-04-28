@@ -36,7 +36,7 @@ class SimulatorCloth(nn.Layer):
         prev_position = frame['prev|world_pos']
         target_position = frame['target|world_pos']
         target_acceleration = target_position - 2 * cur_position + prev_position
-        target_normalized = self.output_normalizer(target_acceleration, training=True)
+        target_normalized = self.output_normalizer(target_acceleration)
 
         # for predict
         acceleration = self.output_normalizer.inverse(output)
