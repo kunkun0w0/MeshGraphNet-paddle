@@ -21,7 +21,7 @@ import datetime
 
 def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple'),
           epoch=10000, save_epoch=100, val_epoch=10, save_path='./model_save/flag_simple',
-          checkpoint=None, bs=1):
+          checkpoint=None, frames=1):
     train_dataset = mesh_loader.load_dataset(
         path=data_path,
         split='train',
@@ -29,7 +29,6 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
         add_history=True,
         noise_scale=0.003,
         noise_gamma=0.1,
-        batch_size=bs
     )
 
     valid_dataset = mesh_loader.load_dataset(
@@ -37,7 +36,6 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
         split='valid',
         fields=['world_pos'],
         add_history=True,
-        batch_size=bs
     )
 
     train_len = len(train_dataset)
@@ -50,6 +48,8 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
         num_iterations=15,
         num_edge_types=1
     )
+
+    model.train()
 
     # todo: add paddle.optimizer.lr.ExponentialDecay
     optimizer = Adam(learning_rate=3e-4, parameters=model.parameters())
@@ -70,41 +70,47 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
 
     train_summary_writer = LogWriter(train_log_dir)
     val_summary_writer = LogWriter(val_log_dir)
-    frames = 40  # 一次取40帧
+
     # train
     for e in range(epoch):
         model.train()
         print(f"Epoch {e + 1}:")
-        for idx, data in enumerate(train_dataset):
-            node_features, edge_features, senders, receivers, frame = mesh_loader.h5py_to_tensor(data)
-            # batch * frames * ...
-            for _ in range(bs):
-                # 取batch内数据
-                for i in range(0, 399, frames):
-                    loss_value = []
-                    # 取第一部分
-                    if i + frames < 399:
-                        node_features_, edge_features_, senders_, receivers_ = \
-                            node_features[_][i:i + frames], edge_features[_][i:i + frames], senders[_][i:i + frames], \
-                            receivers[_][i:i + frames]
-                        frame_ = {key: value[_][i:i + frames] for key, value in frame.items()}
-                    else:
-                        node_features_, edge_features_, senders_, receivers_ = \
-                            node_features[_][i:399], edge_features[_][i:399], senders[_][i:399], receivers[_][i:399]
-                        frame_ = {key: value[_][i:399] for key, value in frame.items()}
-                    graph = MultiGraph(node_features_, edge_sets=[EdgeSet(edge_features_, senders_, receivers_)])
+        loop = tqdm(train_dataset, ncols=100)
+        for idx, data in enumerate(loop):
+            node_features, edge_features, senders, receivers, frame = mesh_loader.data_to_feature(data)
+            # split frame
+            t, nodes, c = node_features.shape
+            loss_value = []
+            loop.set_description(f'Video [{idx}/{train_len}]')
+            for i in range(0, t, frames):
+                if i + frames < t:
+                    node_features_ = node_features[i:i + frames]
+                    edge_features_ = edge_features[i:i + frames]
+                    senders_ = senders[i:i + frames]
+                    receivers_ = receivers[i:i + frames]
+                    frame_ = {key: value[i:i + frames] for key, value in frame.items()}
+                else:
+                    node_features_ = node_features[i:t]
+                    edge_features_ = edge_features[i:t]
+                    senders_ = senders[i:t]
+                    receivers_ = receivers[i:t]
+                    frame_ = {key: value[i:t] for key, value in frame.items()}
 
-                    output, target_normalized, acceleration = model(graph, frame_)
-                    loss = simulator_cloth.cloth_loss(output, target_normalized, frame_)
+                graph = MultiGraph(node_features_, edge_sets=[EdgeSet(edge_features_, senders_, receivers_)])
 
-                    loss.backward()
-                    optimizer.step()
-                    optimizer.clear_grad()
-                    print(loss.numpy().item())
-                    loss_value.append(loss.numpy().item())
-                print(f"step:{idx * bs + _} => loss:{np.mean(np.array(loss_value)).item()}")
-                train_summary_writer.add_scalar("train loss", np.mean(np.array(loss_value)).item(),
-                                                e * (_ + 1) * train_len + idx)
+                output, target_normalized, acceleration = model(graph, frame_)
+                loss = simulator_cloth.cloth_loss(output, target_normalized, frame_)
+
+                loss.backward()
+                optimizer.step()
+                optimizer.clear_grad()
+
+                loss_value.append(loss.numpy().item())
+                loop.set_postfix(loss=loss.numpy().item())
+
+            # print(f"step:{idx + e * train_len} => loss:{np.mean(np.array(loss_value)).item()}")
+            train_summary_writer.add_scalar("train loss", np.mean(np.array(loss_value)).item(), e * train_len + idx)
+
         if (e + 1) % save_epoch == 0:
             opt_state = optimizer.state_dict()
             model_state = model.state_dict()
@@ -141,17 +147,18 @@ def train(data_path=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", "-c", default=None, help="Path to checkpoint file used to resume training")
-    parser.add_argument("--data_path", default=os.path.join(os.path.dirname(__file__), 'flag_simple'),
+    parser.add_argument("--data_path", default=os.path.join(os.path.dirname(__file__), 'data', 'flag_simple'),
                         help="Path to dataset")
     parser.add_argument("--epoch", type=int, default=1000, help="Number of epochs to train (default :1000)")
     parser.add_argument("--save_epoch", type=int, default=100, help="Every n epochs to save (default :100)")
     parser.add_argument("--save_path", default='./model_save/flag_simple', help="Path to save")
     parser.add_argument("--val_epoch", type=int, default=10, help="Every n epochs to valid (default :10)")
-    parser.add_argument("--batch_size", type=int, default=1, help="videos to load")
+    parser.add_argument("--batch_size", type=int, default=10, help="Frames to load")
 
     args = parser.parse_args()
-    train(data_path=args.data_path, epoch=args.epoch, save_epoch=args.save_epoch, val_epoch=args.val_epoch,
-          save_path=args.save_path, checkpoint=args.checkpoint, bs=args.batch_size)
+    train(data_path=args.data_path, epoch=1, save_epoch=args.save_epoch, val_epoch=args.val_epoch,
+          save_path=args.save_path, checkpoint=args.checkpoint, frames=5)
+
 
 #     train(data_path='data/data142705/',
 #           epoch=1000, save_epoch=2, val_epoch=2, save_path='./model_save/flag_simple', checkpoint=None, bs=1)
@@ -161,4 +168,3 @@ if __name__ == '__main__':
     paddle.seed(123456)
     paddle.device.set_device("gpu:0")
     main()
-

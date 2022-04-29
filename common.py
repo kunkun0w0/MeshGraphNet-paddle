@@ -19,11 +19,10 @@ def triangles_to_edges(faces):
     """
     Computes mesh edges from triangles.
     """
-    # face -> [batch, frames, n_edge, 3]
-    # flag_simple -> [batch, 399, 3028, 3]
-
-    edges = paddle.concat([faces[..., :, 0:2], faces[..., :, 1:3],
-                           paddle.stack([faces[..., :, 2], faces[..., :, 0]], axis=-1)], axis=-2)
+    # face -> [frames, n_edge, 3]
+    # flag_simple -> [399, 3028, 3]
+    edges = paddle.concat([faces[:, :, 0:2], faces[:, :, 1:3],
+                           paddle.stack([faces[:, :, 2], faces[:, :, 0]], axis=-1)], axis=-2)
 
     # those edges are sometimes duplicated (within the mesh) and sometimes
     # single (at the mesh boundary).
@@ -33,7 +32,7 @@ def triangles_to_edges(faces):
     packed_edges = paddle.cast(paddle.stack([senders, receivers], axis=-1), paddle.int64)
 
     # remove duplicates and unpack
-    unique_edges = paddle.cast(paddle.unique(packed_edges, axis=2), paddle.int32)
+    unique_edges = paddle.cast(paddle.unique(packed_edges, axis=1), paddle.int32)
     senders, receivers = paddle.unstack(unique_edges, axis=-1)
 
     # create two-way connectivity
