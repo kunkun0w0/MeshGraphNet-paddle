@@ -1,16 +1,13 @@
 import paddle
 import common
-from dataset import SimpleFlag
+from dataset import FlagSimple
 from paddle.io import DataLoader
 
 
-def load_dataset(path, split, fields, add_history, noise_scale=None, noise_gamma=None, batch_size=1):
-    dataset = SimpleFlag.simple_flag(dataset_dir=path, split=split, fields=fields, add_history=add_history,
-                                     noise_scale=noise_scale, noise_gamma=noise_gamma)
-
-    dataloader = DataLoader(dataset, num_workers=4, batch_size=batch_size, drop_last=True)
-
-    return dataloader
+def load_dataset(path, split, fields, add_history, noise_scale=None, noise_gamma=None):
+    print(f"Create {split} loader!")
+    return FlagSimple.dataset(path=path, split=split, fields=fields, add_history=add_history,
+                              noise_scale=noise_scale, noise_gamma=noise_gamma)
 
 
 def paddle_gather(x, dim, index):
@@ -34,28 +31,22 @@ def paddle_gather(x, dim, index):
     return paddle_out
 
 
-def h5py_to_tensor(frame):
+def data_to_feature(frame):
     velocity = frame['velocity']
-    node_type = frame['node_type'][:, 0].squeeze_(axis=-1)
-    node_type = paddle.nn.functional.one_hot(node_type, num_classes=common.NodeType.SIZE).unsqueeze_(axis=1)
-    node_type = paddle.expand(node_type, shape=[node_type.shape[0], velocity.shape[1],
-                                                node_type.shape[2], node_type.shape[3]])
+    node_type = frame['node_type'].squeeze_(axis=-1)
+    node_type = paddle.nn.functional.one_hot(node_type, num_classes=common.NodeType.SIZE)
     node_features = paddle.concat([velocity, node_type], axis=-1)
 
     senders, receivers = common.triangles_to_edges(frame['cells'])
-    b, t, edges = senders.shape
 
     world_pos = frame['world_pos']
     mesh_pos = frame['mesh_pos']
-    b, t, nodes, xyz = world_pos.shape
+    t, edges = senders.shape
 
-    w_shape = [b, t, edges, 3]
-    m_shape = [b, t, edges, 2]
-
-    relative_world_pos = paddle_gather(x=world_pos, index=senders.unsqueeze(axis=-1).expand(w_shape), dim=2) - \
-                         paddle_gather(x=world_pos, index=receivers.unsqueeze(axis=-1).expand(w_shape), dim=2)
-    relative_mesh_pos = paddle_gather(x=mesh_pos, index=senders.unsqueeze(axis=-1).expand(m_shape), dim=2) - \
-                        paddle_gather(x=mesh_pos, index=receivers.unsqueeze(axis=-1).expand(m_shape), dim=2)
+    relative_world_pos = paddle_gather(x=world_pos, index=senders.unsqueeze(-1).expand([t, edges, 3]), dim=1) - \
+                         paddle_gather(x=world_pos, index=receivers.unsqueeze(-1).expand([t, edges, 3]), dim=1)
+    relative_mesh_pos = paddle_gather(x=mesh_pos, index=senders.unsqueeze(-1).expand([t, edges, 2]), dim=1) - \
+                        paddle_gather(x=mesh_pos, index=receivers.unsqueeze(-1).expand([t, edges, 2]), dim=1)
 
     edge_features = paddle.concat([
         relative_world_pos,
