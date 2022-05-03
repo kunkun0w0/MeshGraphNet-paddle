@@ -127,7 +127,7 @@ def train(data_path='D:\Documents\Postgraduate\Code\MeshGraphNets\Data\\flag_sim
         paddle.save(state_dict, path=os.path.join(save_path, str(e + 1) + '.pdparams'))
 
         # perform validation
-        with paddle.no_grad:
+        with paddle.no_grad():
             model.eval()
             for idx, data in enumerate(tqdm(valid_dataset)):
                 model.eval()
